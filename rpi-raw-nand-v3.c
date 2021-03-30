@@ -31,7 +31,9 @@
 #include <fcntl.h>
 #include <time.h>
 
-// #define DEBUG 1
+//#define DEBUG 1
+//#define WRITE_DATA 1
+//#define WAIT_ENTER 1
 
 #define PAGE_SIZE 2112 // (2K + 64)Byte
 #define BLOCK_SIZE 135168 // 64 pages (128K + 4K)Byte
@@ -42,8 +44,8 @@
 // #define GPIO_BASE	 	(BCM2708_PERI_BASE + 0x200000)
 
 /* For Raspberry 2B and 3B :*/
-#define BCM2736_PERI_BASE        0x3F000000
-#define GPIO_BASE                (BCM2736_PERI_BASE + 0x200000) /* GPIO controller */
+#define BCM_PERI_BASE           0xFE000000
+#define GPIO_BASE               (BCM_PERI_BASE + 0x200000) /* GPIO controller */
 
 // IMPORTANT: BE VERY CAREFUL TO CONNECT VCC TO P1-01 (3.3V) AND *NOT* P1-02 (5V) !!
 // IMPORTANT: MAY BE YOU NEED EXTERNAL 1.8V for modern NANDs
@@ -52,12 +54,12 @@
 #define N_WRITE_PROTECT	2
 #define N_READ_BUSY		3
 #define ADDRESS_LATCH_ENABLE	4
-#define COMMAND_LATCH_ENABLE	5
-#define N_READ_ENABLE		6
-#define N_WRITE_ENABLE		7
-//#define N_CHIP_ENABLE		22
+#define COMMAND_LATCH_ENABLE	17
+#define N_READ_ENABLE		18
+#define N_WRITE_ENABLE		27
+#define N_CHIP_ENABLE		22
 
-int data_to_gpio_map[8] = { 8, 9, 10, 11, 12, 13, 14, 15 }; // 8 is NAND IO 0, etc.
+int data_to_gpio_map[8] = { 23, 24, 25, 8, 7, 10, 9, 11 }; // 8 is NAND IO 0, etc.
 
 volatile unsigned int *gpio;
 
@@ -184,12 +186,17 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
-	if ((gpio = (volatile unsigned int *) mmap((caddr_t) 0x13370000, 4096, PROT_READ|PROT_WRITE,
+	if ((gpio = (volatile unsigned int *) mmap((caddr_t) 0, 4096, PROT_READ|PROT_WRITE,
 						MAP_SHARED|MAP_FIXED, mem_fd, GPIO_BASE)) == MAP_FAILED) {
 		perror("mmap GPIO_BASE");
 		close(mem_fd);
 		return -1;
 	}
+
+	
+	//printf("%d", sizeof(gpio));
+	//if(1)
+	//	return 0;
 
 	INP_GPIO(N_READ_BUSY);
 
@@ -208,8 +215,8 @@ int main(int argc, char **argv)
 	OUT_GPIO(ADDRESS_LATCH_ENABLE);
 	GPIO_SET_0(ADDRESS_LATCH_ENABLE);
 
-	//OUT_GPIO(N_CHIP_ENABLE);
-	//GPIO_SET_0(N_CHIP_ENABLE);
+	OUT_GPIO(N_CHIP_ENABLE);
+	GPIO_SET_0(N_CHIP_ENABLE);
 
 	if (argc < 3) {
 usage:
@@ -535,20 +542,36 @@ int send_write_command(int page, unsigned char data[PAGE_SIZE])
 	set_data_direction_out();
 
 	GPIO_SET_1(COMMAND_LATCH_ENABLE);
+#ifdef WAIT_ENTER
+        getchar();
+#endif
 	shortpause();
 	GPIO_SET_0(N_WRITE_ENABLE);
+#ifdef WAIT_ENTER
+        getchar();
+#endif
 	shortpause();
 	GPIO_DATA8_OUT(0x80);
+#ifdef WAIT_ENTER
+        getchar();
+#endif
 	shortpause();
 	GPIO_SET_1(N_WRITE_ENABLE);
+#ifdef WAIT_ENTER
+        getchar();
+#endif
 	shortpause();
 	GPIO_SET_0(COMMAND_LATCH_ENABLE);
+#ifdef WAIT_ENTER
+        getchar();
+#endif
 	shortpause();
 
 	GPIO_SET_1(ADDRESS_LATCH_ENABLE);
+	//printf("aaa"); getchar();
 	for (i = 0; i < 5; i++) {
 		GPIO_SET_0(N_WRITE_ENABLE);
-
+		shortpause();
 		// if (i < 2) {
 		// 	printf("Col Add%d = %d\n", i + 1, page_to_address(page, i));
 		// }
@@ -562,6 +585,7 @@ int send_write_command(int page, unsigned char data[PAGE_SIZE])
 		shortpause();
 	}
 	GPIO_SET_0(ADDRESS_LATCH_ENABLE);
+	//printf("xxx"); getchar();
 	shortpause();
 
 	for (i = 0; i < PAGE_SIZE; i++) {
@@ -577,7 +601,7 @@ int send_write_command(int page, unsigned char data[PAGE_SIZE])
 	shortpause(); GPIO_SET_0(N_WRITE_ENABLE);
 	GPIO_DATA8_OUT(0x10);
 	shortpause(); GPIO_SET_1(N_WRITE_ENABLE);
-	shortpause(); GPIO_SET_0(COMMAND_LATCH_ENABLE);
+	//shortpause(); GPIO_SET_0(COMMAND_LATCH_ENABLE);
 	shortpause();
 
 	return 0;
@@ -636,12 +660,24 @@ int read_status()
 
 	set_data_direction_out();
 
+	GPIO_DATA8_OUT(0x70);
+	shortpause();
+	//GPIO_SET_1(COMMAND_LATCH_ENABLE);
+	//shortpause();
+	GPIO_SET_0(N_WRITE_ENABLE);
+	shortpause();
+	GPIO_SET_1(N_WRITE_ENABLE);
+	shortpause();
+	GPIO_SET_0(COMMAND_LATCH_ENABLE);
+	shortpause();
+        /*
 	GPIO_SET_1(COMMAND_LATCH_ENABLE);
 	shortpause(); GPIO_SET_0(N_WRITE_ENABLE);
 	GPIO_DATA8_OUT(0x70);
 	shortpause(); GPIO_SET_1(N_WRITE_ENABLE);
 	shortpause(); GPIO_SET_0(COMMAND_LATCH_ENABLE);
 	shortpause();
+	*/
 
 	set_data_direction_in();
 
@@ -681,7 +717,7 @@ int read_pages(int first_page_number, int number_of_pages, char *outfile, int wr
 		return -1;
 	print_id(id);
 	printf("if this ID is incorrect, press Ctrl-C NOW to abort (3s timeout)\n");
-	sleep(3);
+	//sleep(3);
 
 	printf("\nStart reading...\n");
 	clock_t start = clock();
@@ -861,7 +897,7 @@ int write_pages(int first_page_number, int number_of_pages, char *infile)
 		return -1;
 	print_id(id);
 	printf("if this ID is incorrect, press Ctrl-C NOW to abort (3s timeout)\n");
-	sleep(3);
+	//sleep(3);
 
 	printf("\nStart writing...\n");
 	clock_t start = clock();
@@ -904,7 +940,7 @@ int write_pages(int first_page_number, int number_of_pages, char *infile)
 
 		send_write_command(page, buf);
 		while (GPIO_READ(N_READ_BUSY) == 0) {
-			// printf("Busy\n");
+			//printf("Busy\n");
 			shortpause();
 		}
 		// read_status();
@@ -939,7 +975,7 @@ int erase_blocks(int first_block_number, int number_of_blocks)
 		return -1;
 	print_id(id);
 	printf("if this ID is incorrect, press Ctrl-C NOW to abort (3s timeout)\n");
-	sleep(3);
+	//sleep(3);
 
 	printf("\nStart erasing...\n");
 	clock_t start = clock();
