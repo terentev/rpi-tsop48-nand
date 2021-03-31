@@ -4,7 +4,7 @@ g++ rpi-raw-nand-v3.c -o rpi-raw-nand-v3
 I tested on MX30LF2G18AC + rpi 4
 
 Whats work?
-1) read
+1) read (read two times - read must be equals )
 
   ./rpi-raw-nand-v3 25 read_full 0 131072 read-full-file
   
