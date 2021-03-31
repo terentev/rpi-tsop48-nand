@@ -11,6 +11,7 @@ Whats work?
 2) write after erase
 
 rpi-raw-nand-v3 100 erase_blocks 0 2048
+
 for i in {0..131071}; do sleep 0.01 ; ./rpi-raw-nand-v3 100 write_full $i 1 read-full-file; done
 
 to view page XXX
